@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { supabase } from '@/lib/supabase';
 import { 
   Crown, 
   Zap, 
@@ -16,7 +17,8 @@ import {
   Users,
   Trophy,
   Target,
-  Heart
+  Heart,
+  AlertCircle
 } from 'lucide-react';
 
 type Plan = {
@@ -94,36 +96,162 @@ export default function AuthPage() {
     phone: ''
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+    setError(null); // Limpar erro ao digitar
+  };
+
+  const validateForm = () => {
+    if (!formData.email || !formData.password) {
+      setError('Email e senha são obrigatórios');
+      return false;
+    }
+
+    if (mode === 'register') {
+      if (!formData.name || !formData.phone) {
+        setError('Nome e telefone são obrigatórios');
+        return false;
+      }
+
+      if (formData.password !== formData.confirmPassword) {
+        setError('As senhas não coincidem');
+        return false;
+      }
+
+      if (formData.password.length < 6) {
+        setError('A senha deve ter pelo menos 6 caracteres');
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  const createUserProfile = async (userId: string, email: string) => {
+    try {
+      const { error } = await supabase
+        .from('user_profiles')
+        .insert([
+          {
+            user_id: userId,
+            name: formData.name,
+            email: email,
+            plan: selectedPlan,
+            join_date: new Date().toISOString().split('T')[0]
+          }
+        ]);
+
+      if (error) {
+        console.error('Erro ao criar perfil:', error);
+        return false;
+      }
+
+      // Criar estatísticas iniciais do usuário
+      await supabase
+        .from('user_stats')
+        .insert([
+          {
+            user_id: userId,
+            current_weight: 0,
+            goal_weight: 0,
+            streak_days: 0,
+            total_workouts: 0,
+            community_rank: 0,
+            messages_sent: 0,
+            reactions_received: 0,
+            members_helped: 0
+          }
+        ]);
+
+      return true;
+    } catch (error) {
+      console.error('Erro ao criar perfil do usuário:', error);
+      return false;
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
+    
+    if (!validateForm()) {
+      return;
+    }
 
-    // Simular processo de autenticação
-    setTimeout(() => {
+    setIsLoading(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
       if (mode === 'register') {
-        // Criar conta
-        console.log('Criando conta:', { ...formData, plan: selectedPlan });
-        alert(`Conta criada com sucesso! Plano: ${PLANS.find(p => p.id === selectedPlan)?.name}`);
+        // Criar nova conta
+        const { data, error } = await supabase.auth.signUp({
+          email: formData.email,
+          password: formData.password,
+          options: {
+            data: {
+              name: formData.name,
+              phone: formData.phone,
+              plan: selectedPlan
+            }
+          }
+        });
+
+        if (error) {
+          setError(error.message);
+          return;
+        }
+
+        if (data.user) {
+          // Criar perfil do usuário no banco
+          const profileCreated = await createUserProfile(data.user.id, formData.email);
+          
+          if (profileCreated) {
+            setSuccess('Conta criada com sucesso! Verifique seu email para confirmar.');
+            
+            // Redirecionar após 3 segundos
+            setTimeout(() => {
+              window.location.href = '/dashboard';
+            }, 3000);
+          } else {
+            setError('Conta criada, mas houve erro ao configurar perfil. Tente fazer login.');
+          }
+        }
       } else {
-        // Login
-        console.log('Fazendo login:', { email: formData.email, password: formData.password });
-        
-        // Verificar se é admin
-        if (formData.email === 'admin@fitcommunity.com' && formData.password === 'admin123') {
-          alert('Login como Administrador realizado com sucesso!');
-          window.location.href = '/admin';
-        } else {
-          alert('Login realizado com sucesso!');
-          window.location.href = '/dashboard';
+        // Fazer login
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: formData.email,
+          password: formData.password,
+        });
+
+        if (error) {
+          setError('Email ou senha incorretos');
+          return;
+        }
+
+        if (data.user) {
+          setSuccess('Login realizado com sucesso!');
+          
+          // Verificar se é admin
+          if (formData.email === 'admin@fitcommunity.com') {
+            setTimeout(() => {
+              window.location.href = '/admin';
+            }, 1000);
+          } else {
+            setTimeout(() => {
+              window.location.href = '/dashboard';
+            }, 1000);
+          }
         }
       }
+    } catch (error) {
+      console.error('Erro na autenticação:', error);
+      setError('Erro interno. Tente novamente.');
+    } finally {
       setIsLoading(false);
-    }, 2000);
+    }
   };
 
   return (
@@ -159,6 +287,21 @@ export default function AuthPage() {
                 </p>
               </CardHeader>
               <CardContent>
+                {/* Mensagens de erro e sucesso */}
+                {error && (
+                  <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center space-x-2">
+                    <AlertCircle className="w-5 h-5 text-red-500" />
+                    <span className="text-red-700 text-sm">{error}</span>
+                  </div>
+                )}
+
+                {success && (
+                  <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg flex items-center space-x-2">
+                    <Check className="w-5 h-5 text-green-500" />
+                    <span className="text-green-700 text-sm">{success}</span>
+                  </div>
+                )}
+
                 <form onSubmit={handleSubmit} className="space-y-4">
                   {mode === 'register' && (
                     <>
@@ -236,7 +379,11 @@ export default function AuthPage() {
 
                 <div className="mt-6 text-center">
                   <button
-                    onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
+                    onClick={() => {
+                      setMode(mode === 'login' ? 'register' : 'login');
+                      setError(null);
+                      setSuccess(null);
+                    }}
                     className="text-orange-600 hover:text-orange-700 font-medium"
                   >
                     {mode === 'login' 
@@ -247,8 +394,6 @@ export default function AuthPage() {
                 </div>
               </CardContent>
             </Card>
-
-
           </div>
 
           {/* Seleção de Planos (apenas no cadastro) */}

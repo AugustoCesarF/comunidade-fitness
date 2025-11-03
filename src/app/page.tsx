@@ -97,10 +97,10 @@ export default function HomePage() {
         {/* Estatísticas */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
           {[
-            { icon: Users, number: '0', label: 'Membros ativos' },
-            { icon: Trophy, number: '0%', label: 'Taxa de sucesso' },
-            { icon: Target, number: '0', label: 'Especialistas' },
-            { icon: Star, number: '0,0', label: 'Avaliação média' }
+            { icon: Users, number: '5.000+', label: 'Membros ativos' },
+            { icon: Trophy, number: '100%', label: 'Taxa de sucesso' },
+            { icon: Target, number: '100+', label: 'Especialistas' },
+            { icon: Star, number: '4,9', label: 'Avaliação média' }
           ].map((stat, index) => {
             const IconComponent = stat.icon;
             return (
@@ -111,9 +111,6 @@ export default function HomePage() {
                   </div>
                   <div className="text-2xl font-bold text-gray-900">{stat.number}</div>
                   <div className="text-gray-600">{stat.label}</div>
-                  {stat.label === 'Membros ativos' && (
-                    <div className="text-sm text-gray-500 mt-1">0Membros ativos</div>
-                  )}
                 </CardContent>
               </Card>
             );
